@@ -1,24 +1,24 @@
 import os
-os.chdir('calcular_retornos')
+os.chdir('quantdare_posts/calcular_retornos')
 
 # load packages
-import requests as req
 import pandas as pd
 import numpy as np
 import pandas_datareader as pdr
 import seaborn as sns
-import matplotlib
 from matplotlib import pyplot as plt
+# not needed, only to prettify the plots.
+import matplotlib
 from IPython.display import set_matplotlib_formats
 %matplotlib inline
 
 # ploting setup
 plt.style.use(['seaborn-white', 'seaborn-paper'])
 matplotlib.rc('font', family='Times New Roman', size=15)
-set_matplotlib_formats('png', 'png', quality=80)
-plt.rcParams['savefig.dpi'] = 100
+set_matplotlib_formats('png', 'png', quality=90)
+plt.rcParams['savefig.dpi'] = 150
 plt.rcParams['figure.autolayout'] = False
-plt.rcParams['figure.figsize'] = 10, 6
+plt.rcParams['figure.figsize'] = 8, 5
 plt.rcParams['axes.labelsize'] = 10
 plt.rcParams['axes.titlesize'] = 15
 plt.rcParams['font.size'] = 12
@@ -74,7 +74,7 @@ def total_return_from_returns(returns):
 
 
 def plot_this(df, title, figsize=None, ylabel='',
-             output_file='imgs/fig_rets_approach1.png', bottom_adj=0.25,
+             output_file='imgs/fig.png', bottom_adj=0.25,
              txt_ymin=-0.4, bar=False):
     if bar:
         ax = df.plot.bar(title=title, figsize=figsize)
@@ -126,7 +126,7 @@ results_storage.tail(10)
 # Approach 1: starting from prices
 # ================================
 approach1 = results_storage.groupby(['year', 'month'], )['close'].apply(total_return)
-approach1.tail(10)
+approach1.tail(12)
 
 # ploting
 # -------
@@ -137,7 +137,7 @@ plot_this(approach1, bar=True, title='Trailing returns: Approach 1',
 # Nota bene: What means approach 1:
 # means that we are selecting all available prices INSIDE a month and then we
 # calculate the total return with that prices.
-select_idx = (2017, 8)
+select_idx = (2017, 7)
 idx_approach1 = results_storage.groupby(['year', 'month'])['close'].groups[select_idx]
 last_group = results_storage.loc[idx_approach1]
 last_group.head()
@@ -153,7 +153,7 @@ r = prices.pct_change()
 approach2 = r.groupby((r.index.year, r.index.month))\
              .apply(total_return_from_returns)
 
-approach2.tail(10)
+approach2.tail(12)
 
 plot_this(approach2, bar=True, title='Trailing returns: Approach 2',
           ylabel='Returns (parts per unit)', txt_ymin=-0.4, bottom_adj=0.25,
@@ -182,7 +182,7 @@ approach3 = results_storage.asfreq('BM')\
                            .set_index(['year', 'month'])\
                            .close\
                            .pct_change()
-approach3.tail(10)
+approach3.tail(12)
 plot_this(approach3, bar=True, title='Trailing returns: Approach 3',
           ylabel='Returns (parts per unit)', txt_ymin=-0.4, bottom_adj=0.25,
           output_file='imgs/fig_rets_approach3.png')
@@ -192,12 +192,9 @@ plot_this(approach3, bar=True, title='Trailing returns: Approach 3',
 # ========================
 all_approaches = pd.concat([approach1, approach2, approach3], axis=1,
                            keys=['approach1', 'approach2', 'approach3'])
-
+all_approaches.head(12)
+all_approaches.tail(12)
 plot_this(all_approaches, title='Comparing all approaches',
           output_file='imgs/all_approaches.png', bar=True,
-          ylabel='Returns (parts per unit)', figsize=(15,8), bottom_adj=0.2,
-          txt_ymin=-0.3)
-
-
-
-# 
+          ylabel='Returns (parts per unit)', bottom_adj=0.25, figsize=(10,6),
+          txt_ymin=-0.4)
