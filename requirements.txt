@@ -2,3 +2,5 @@ pandas
 numpy
 seaborn
 matplotlib
+pandas-datareader
+
