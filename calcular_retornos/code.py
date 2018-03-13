@@ -4,7 +4,7 @@ os.chdir('quantdare_posts/calcular_retornos')
 # load packages
 import pandas as pd
 import numpy as np
-import pandas_datareader as pdr
+# import pandas_datareader as pdr
 import seaborn as sns
 from matplotlib import pyplot as plt
 # not needed, only to prettify the plots.
