@@ -3,4 +3,4 @@ numpy
 seaborn
 matplotlib
 pandas-datareader
-
+numba
