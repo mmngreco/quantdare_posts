@@ -4,3 +4,4 @@ seaborn
 matplotlib
 pandas-datareader
 numba
+pip install fix-yahoo-finance
