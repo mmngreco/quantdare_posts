@@ -21,6 +21,44 @@ def initialize_variables(
     riskfree=0.03,
     to_tf=False
 ):
+    """Initialize variables.
+
+    Parameters
+    ----------
+    S0 : float
+        Underlying spot price.
+    strike : float
+        Strike price.
+    time_to_expiry : float
+        Time to expiry.
+    implied_vol : float
+        Volatility.
+    riskfree : float
+        Risk free rate.
+    to_tf : bool, optional
+        Pass True to returns tensorflow variables.
+
+    Returns
+    -------
+    out : dict
+        A dictionary with the following keys:
+        S0 : Spot price
+        strike : Strike price
+        time_to_expiry : Time of Maturity
+        implied_vol : Volatility
+        riskfree : Risk Free Rate
+        to_tf : use tensorflow variables
+
+    Examples
+    --------
+    >>> out = initialize_variables()
+    >>> pprint(out)
+    {'S0': 100,
+     'implied_vol': 0.2,
+     'riskfree': 0.03,
+     'strike': 110,
+     'time_to_expiry': 2}
+    """
     if to_tf:
         S0 = tf.Variable(S0, dtype=DTYPE)
         strike = tf.Variable(strike, dtype=DTYPE)
@@ -49,25 +87,31 @@ def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
 
     Parameters
     ----------
-    S0 : float
-    strike : float
-    time_to_expiry : float
-    implied_vol : float
-    riskfree : float
+    S0 : tensorflow.Variable
+        Underlying spot price.
+    strike : tensorflow.Variable
+        Strike price.
+    time_to_expiry : tensorflow.Variable
+        Time to expiry.
+    implied_vol : tensorflow.Variable
+        Volatility.
+    riskfree : tensorflow.Variable
+        Risk free rate.
 
     Returns
     -------
-    npv : float
+    npv : tensorflow.Tensor
         Net present value.
 
     Examples
     --------
     >>> kw = initialize_variables(to_tf=True)
     >>> pricer_blackScholes(**kw)
+    <tf.Tensor: id=120, shape=(), dtype=float32, numpy=9.739834>
 
     Notes
     -----
-    https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model#Black%E2%80%93Scholes_formula
+    Formula: https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model#Black%E2%80%93Scholes_formula
     """
     S       = S0
     K       = strike
@@ -90,14 +134,19 @@ def calculate_blackScholes():
     Returns
     -------
     out : dict
-        npv : net presetn value
+        npv : net present value
         dv : First order derivates
-        d2v : Second order derivates
-        d3v : Third order derivates
 
-    Example
-    -------
-    >>> calculate_blackScholes()
+    Examples
+    --------
+    >>> out = calculate_blackScholes()
+    >>> pprint(out)
+    {'dv': {'S0': 0.5066145,
+            'implied_vol': 56.411205,
+            'riskfree': 81.843216,
+            'strike': -0.37201464,
+            'time_to_expiry': 4.0482087},
+     'npv': 9.739834}
     """
     variables = initialize_variables(to_tf=True)
 
@@ -119,15 +168,15 @@ def brownian(S0, dt, sigma, mu, dw):
 
     Parameters
     ----------
-    S0 : float
+    S0 : tensorflow.Variable
         Initial value of Spot.
-    dt : float
+    dt : tensorflow.Variable
         Time step.
-    sigma : float
+    sigma : tensorflow.Variable
         Volatility.
-    mu : float
+    mu : tensorflow.Variable
         Mean, in black Scholes frame it's the risk free rate.
-    dw : numpy.array
+    dw : tensorflow.Variable
         Random variable.
 
     Returns
@@ -145,10 +194,6 @@ def brownian(S0, dt, sigma, mu, dw):
     >>> sigma = v["implied_vol"]
     >>> r = v["riskfree"]
     >>> paths = np.transpose(brownian(S0, dt, sigma, r, dw))
-    >>> # to pandas
-    >>> df = pd.DataFrame(paths)
-    >>> df.mean()
-    >>> df.plot()
     """
     dt_sqrt = tf.math.sqrt(dt)
     shock = sigma * dt_sqrt * dw
@@ -160,24 +205,37 @@ def brownian(S0, dt, sigma, mu, dw):
 
 @tf.function
 def pricer_montecarlo(S0, strike, time_to_expiry, implied_vol, riskfree, dw):
-    """pricer_montecarlo.
+    """Monte Carlo pricing method.
 
     Parameters
     ----------
-    S0 :
-    strike :
-    time_to_expiry :
-    implied_vol :
-    riskfree :
-    dw :
+    S0 : tensorflow.Variable
+        Underlying spot price.
+    strike : tensorflow.Variable
+        Strike price.
+    time_to_expiry : tensorflow.Variable
+        Time to expiry.
+    implied_vol : tensorflow.Variable
+        Volatility.
+    riskfree : tensorflow.Variable
+        Risk free rate.
+    dw : tensorflow.Variable
+        Normal random variable.
 
     Returns
     -------
-    npv : float
+    npv : tensorflow.Variable
         Net present value.
 
     Examples
     --------
+    >>> nsims = 10
+    >>> nobs = 100
+    >>> dw = tf.random.normal((nsims, nobs), seed=3232)
+    >>> v = initialize_variables(to_tf=True)
+    >>> npv = pricer_montecarlo(**v, dw=dw)
+    >>> npv
+    <tf.Tensor: id=646, shape=(), dtype=float32, numpy=28.780073>
     """
     sigma = implied_vol
     T = time_to_expiry
@@ -204,7 +262,19 @@ def calculate_montecarlo(greeks=True):
 
     Examples
     --------
-    >>> calculate_montecarlo()
+    >>> out = calculate_montecarlo()
+    >>> pprint(out)
+    {'d2v': {'S0': 0.59282005,
+             'implied_vol': 13.493881,
+             'riskfree': -124.43222,
+             'strike': 0.75492465,
+             'time_to_expiry': 51.805096},
+     'dv': {'S0': 0.5065364,
+            'implied_vol': 56.45906,
+            'riskfree': 81.81441,
+            'strike': -0.37188327,
+            'time_to_expiry': 4.050169},
+     'npv': 9.746445}
     """
     nsims = 10000000
     nobs = 2
@@ -216,14 +286,14 @@ def calculate_montecarlo(greeks=True):
     if greeks:
         with tf.GradientTape() as g2:
             with tf.GradientTape() as g1:
-                npv = pricer_montecarlo(**v, dw=dw)
+                npv = pricer_montecarlo(**v, dw=dw).numpy()
             dv = g1.gradient(npv, v)
         d2v = g2.gradient(dv, v)
 
-        out["dv"] = dv
-        out["d2v"] = d2v
+        out["dv"] = {k: v.numpy() for k, v in dv.items()}
+        out["d2v"] = {k: v.numpy() for k, v in d2v.items()}
     else:
-        npv = St(**v, dw=dw)
+        npv = pricer_montecarlo(**v, dw=dw).numpy()
 
     out["npv"] = npv
     return out
