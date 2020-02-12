@@ -1,31 +1,36 @@
-# Have you tried calculate derivatives using TF
+We will learn how to implement a simple function using TensorFlow 2 and
+how to obtain the derivatives from it. We will implement a Black-Scholes
+model for pricing a call option and then we are going to obtain the
+greeks.
 
-We will lear how to implement a simple funtion using TensorFlow 2 and how
-to obtain the derivatives from it. We will implement a Black-Scholes model
-for princing a call option and then we are going to obtain the greeks.
+[Matthias
+Groncki](https://ipythonquant.wordpress.com/2018/05/22/tensorflow-meets-quantitative-finance-pricing-exotic-options-with-monte-carlo-simulations-in-tensorflow/)
+wrote a very interesting post about how to obtain [the
+greeks](https://en.wikipedia.org/wiki/Greeks_(finance)) of a pricing
+option using TensorFlow which inspired me to write this post. So, I took
+the same example and make some updates to use TensorFlow 2.
 
-[Matthias Groncki](https://ipythonquant.wordpress.com/2018/05/22/tensorflow-meets-quantitative-finance-pricing-exotic-options-with-monte-carlo-simulations-in-tensorflow/) wrote a very
-interesting post about how to obtain
-[the greeks](https://en.wikipedia.org/wiki/Greeks_(finance))
-of a princing option using tensorflow which inspired me to write this post. So,
-I took the same example and make some updates to use TensorFlow 2.
+\[mathjax\]
 
 ### Requirements
 
-* [Python](https://www.python.org/)
-* [TesorFlow](https://www.tensorflow.org/api_docs/python/tf)
-* [Black-Scholes](https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model)
-* [Monte Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_methods_for_option_pricing)
+-   [Python](https://www.python.org/)
+-   [TesorFlow](https://www.tensorflow.org/api_docs/python/tf)
+-   [Black-Scholes](https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model)
+-   [Monte
+    Carlo](https://en.wikipedia.org/wiki/Monte_Carlo_methods_for_option_pricing)
 
-## Black-Scholes pricing formula
+Black-Scholes pricing formula
+-----------------------------
 
-We are going to implement the Black-Scholes formula for pricing options. In
-this example we focus on the call option.
+We are going to implement the Black-Scholes formula for pricing options.
+In this example we focus on the call option.
 
-The version 2 of TensorFlow has many enhacements, specially on the python
-API which is easier to write code than before.
+The version 2 of TensorFlow has many enhancements, especially on the
+python API which makes it** **easier to write code than before.
 
-```python
+::: {#cb1 .sourceCode}
+``` {.sourceCode .python}
 @tf.function
 def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
     """Prices call option.
@@ -71,43 +76,52 @@ def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
     npv =  S * Phi(d1) - K * tf.exp(-r * dt) * Phi(d2)
     return npv
 ```
+:::
 
-As we can see the above code is the implementation of a call option in terms of
-the Black-Scholes framework. A very cool improvement is the
+As we can see the above code is the implementation of a call option in
+terms of the Black-Scholes framework. A very cool improvement is the
 [`tf.function`](https://www.tensorflow.org/api_docs/python/tf/function)
-decorator which create a callable graph for us.
+decorator which creates a callable graph for us.
 
-## Calculating Derivatives
+Calculating Derivatives
+-----------------------
 
-In previous versions of TensorFlow we need to use [`tf.gradient`]() which requires
-create a session and plenty of annoing stuff. Now, all this process is done 
-using [`tf.GradientTape`](https://www.tensorflow.org/api_docs/python/tf/GradientTape)
-which is simplier. We make get it done writting something like :
+In previous versions of TensorFlow we need to use `tf.gradient` which
+requires us to create a session and plenty of annoying stuff. Now, all
+this process is done using
+[`tf.GradientTape`](https://www.tensorflow.org/api_docs/python/tf/GradientTape)
+which is simpler. We may get it done writing something like :
 
-```python
+::: {#cb2 .sourceCode}
+``` {.sourceCode .python}
 with tf.GradientTape() as g1:
-	npv = pricer_blackScholes(**variables)
+    npv = pricer_blackScholes(**variables)
 dv = g1.gradient(npv, variables)  # first order derivatives
 ```
+:::
 
-ok, but what if we want higher order derivatives? The answer is easy, we only
-have to add a new `tf.GradientTape`:
+ok, but what if we want higher order derivatives? The answer is easy, we
+only have to add a new `tf.GradientTape`:
 
-```python
+::: {#cb3 .sourceCode}
+``` {.sourceCode .python}
 with tf.GradientTape() as g2:
-	with tf.GradientTape() as g1:
-		npv = pricer_blackScholes(**variables)
-	dv = g1.gradient(npv, variables)
+    with tf.GradientTape() as g1:
+        npv = pricer_blackScholes(**variables)
+    dv = g1.gradient(npv, variables)
 d2v = g2.gradient(dv, variables)
 ```
+:::
 
-### Black-Scholes method
+### Black-Scholes model {#black-scholes-method}
 
 We use the well-known
 [Black-Scholes](https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model)
- to estimate the price of the call. Our code can be written as follows:
+model to estimate the price of the call. Our code can be written as
+follows:
 
-```python
+::: {#cb4 .sourceCode}
+``` {.sourceCode .python}
 @tf.function
 def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
     """pricer_blackScholes.
@@ -154,11 +168,14 @@ def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
     npv =  S * Phi(d1) - K * tf.exp(-r * dt) * Phi(d2)
     return npv
 ```
+:::
 
-To get the net present value (NPV) and the greeks (derivatives) we can write a
-function that wraps all process. It's optional of course but very useful.
+To get the net present value (NPV) and the greeks (derivatives) we can
+write a function that wraps all the process. It's optional of course but
+very useful.
 
-```python
+::: {#cb5 .sourceCode}
+``` {.sourceCode .python}
 @tf.function
 def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
     """Calculates NPV and greeks using Black-Scholes model.
@@ -205,10 +222,12 @@ def pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):
     npv =  S * Phi(d1) - K * tf.exp(-r * dt) * Phi(d2)
     return npv
 ```
+:::
 
 The previous function returns:
 
-```python
+::: {#cb6 .sourceCode}
+``` {.sourceCode .python}
 >>> calculate_blackScholes()
 {'dv': {'S0': 0.5066145,
         'implied_vol': 56.411205,
@@ -217,14 +236,17 @@ The previous function returns:
         'time_to_expiry': 4.048208},
  'npv': 9.739834}
 ```
+:::
 
 Where:
 
-* `npv` : the net present value is 9.74.
-* `S0` = $\frac{\partial v}{\partial S}$
-* `implied_vol` = $\frac{\partial v}{\partial \sigma}$
-* `strike` = $\frac{\partial v}{\partial K}$
-* `time_to_expiry` = $\frac{\partial v}{\partial \tau}$
+-   `npv` : The net present value is 9.74.
+-   `S0` = [\$\$\\frac{\\partial v}{\\partial S}\$\$]{.math .inline}
+-   `implied_vol` = [\$\$\\frac{\\partial v}{\\partial
+    \\sigma}\$\$]{.math .inline}
+-   `strike` = [\$\$\\frac{\\partial v}{\\partial K}\$\$]{.math .inline}
+-   `time_to_expiry` = [\$\$\\frac{\\partial v}{\\partial
+    \\tau}\$\$]{.math .inline}
 
 We have seen how to implement a TensorFlow function and how to get the
 derivatives from it. Now, we are going to see another example using the
@@ -232,12 +254,13 @@ Monte Carlo method.
 
 ### Monte Carlo method
 
-The Monte Carlo method is very useful when we don't have the close formula or
-it's very complex. We are going to implement the Monte Carlo pricing function,
-to this task I decided implement `brownian` function too used inside of
-`pricer_montecarlo`.
+The Monte Carlo method is very useful when we don't have the closed
+formula or it's very complex. We are going to implement the Monte Carlo
+pricing function, for this task I decided to implement a `brownian`
+function too, which is used inside of `pricer_montecarlo`.
 
-```python
+::: {#cb7 .sourceCode}
+``` {.sourceCode .python}
 @tf.function
 def pricer_montecarlo(S0, strike, time_to_expiry, implied_vol, riskfree, dw):
     """Monte Carlo pricing method.
@@ -325,10 +348,12 @@ def brownian(S0, dt, sigma, mu, dw):
     out = S0 * tf.math.cumprod(bm, axis=1)
     return out
 ```
+:::
 
 Now, we are ready to calculate the NPV and the greeks under this frame.
 
-```python
+::: {#cb8 .sourceCode}
+``` {.sourceCode .python}
 def calculate_montecarlo(greeks=True):
     """calculate_montecarlo.
 
@@ -364,10 +389,12 @@ def calculate_montecarlo(greeks=True):
     out["dv"] = {k: v.numpy() for k, v in dv.items()}
     return out
 ```
+:::
 
 The output:
 
-```python
+::: {#cb9 .sourceCode}
+``` {.sourceCode .python}
 >>> out = calculate_montecarlo()
 >>> pprint(out)
 {'dv': {'S0': 0.5065364,
@@ -377,29 +404,30 @@ The output:
         'time_to_expiry': 4.050169},
  'npv': 9.746445}
 ```
-
+:::
 
 ### Comparison
 
 We are taking a look at the results of both methods:
 
-| Variable                             | Black-Scholes | Montecarlo  |
-| :----------------------------------: | :-----------: | :---------: |
-| npv                                  | 9.746445      | 9.739834    |
-| $\frac{\partial v}{\partial S}$      | 0.5065364     | 0.5066145   |
-| $\frac{\partial v}{\partial \sigma}$ | 56.45906      | 56.411205   |
-| $\frac{\partial v}{\partial r}$      | 81.81441      | 81.843216   |
-| $\frac{\partial v}{\partial K}$      | -0.37188327   | -0.37201464 |
-| $\frac{\partial v}{\partial \tau}$   | 4.050169      | 4.048208    |
+                                                                     Black-Scholes   Montecarlo
+  ----------------------------------------------------------------- --------------- -------------
+                                 npv                                   9.746445       9.739834
+      [\$\$\\frac{\\partial v}{\\partial S}\$\$]{.math .inline}        0.5065364      0.5066145
+   [\$\$\\frac{\\partial v}{\\partial \\sigma}\$\$]{.math .inline}     56.45906       56.411205
+      [\$\$\\frac{\\partial v}{\\partial r}\$\$]{.math .inline}        81.81441       81.843216
+      [\$\$\\frac{\\partial v}{\\partial K}\$\$]{.math .inline}       -0.37188327    -0.37201464
+    [\$\$\\frac{\\partial v}{\\partial \\tau}\$\$]{.math .inline}      4.050169       4.048208
 
+As we can see, we can get similar results with both methods. There is
+room for improvements, for example: We can increase the number of
+simulations into Monte Carlo method. However, results are reasonably
+close. Notice that the new version of TensorFlow makes the development
+process pretty simple which is a great news for quants.
 
-As we can see, we can get similar results with both methods. There is room for
-improvements, for example: We can increase the number of simulations into
-Monte Carlo method. However, the results are reasonably close between them and
-very easy to implement, which is more important.
-
-Have you used this before?  would be great if you can tell your use case in the
-comments.
+Have you used this before? would be great if you can tell your use case
+in the comments.
 
 Keep coding!
 
+[![](https://mybinder.org/badge_logo.svg)](https://mybinder.org/v2/gh/mmngreco/quantdare_posts/master?filepath=tf2-diff%2Ftf-differentiation.ipynb)
