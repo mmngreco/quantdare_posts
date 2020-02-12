@@ -1,0 +1,8 @@
+fix-yahoo-finance
+matplotlib
+numba
+numpy
+pandas
+pandas-datareader
+seaborn
+tensorflow
