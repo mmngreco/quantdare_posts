@@ -1,0 +1,357 @@
+<h1 id="have-you-tried-calculate-derivatives-using-tf">Have you tried calculate derivatives using TF</h1>
+<p>We will lear how to implement a simple funtion using TensorFlow 2 and how to obtain the derivatives from it. We will implement a Black-Scholes model for princing a call option and then we are going to obtain the greeks.</p>
+<p><a href="https://ipythonquant.wordpress.com/2018/05/22/tensorflow-meets-quantitative-finance-pricing-exotic-options-with-monte-carlo-simulations-in-tensorflow/">Matthias Groncki</a> wrote a very interesting post about how to obtain <a href="https://en.wikipedia.org/wiki/Greeks_(finance)">the greeks</a> of a princing option using tensorflow which inspired me to write this post. So, I took the same example and make some updates to use TensorFlow 2.</p>
+<h3 id="requirements">Requirements</h3>
+<ul>
+<li><a href="https://www.python.org/">Python</a></li>
+<li><a href="https://www.tensorflow.org/api_docs/python/tf">TesorFlow</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model">Black-Scholes</a></li>
+<li><a href="https://en.wikipedia.org/wiki/Monte_Carlo_methods_for_option_pricing">Monte Carlo</a></li>
+</ul>
+<h2 id="black-scholes-pricing-formula">Black-Scholes pricing formula</h2>
+<p>We are going to implement the Black-Scholes formula for pricing options. In this example we focus on the call option.</p>
+<p>The version 2 of TensorFlow has many enhacements, specially on the python API which is easier to write code than before.</p>
+<div class="sourceCode" id="cb1"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb1-1"><a href="#cb1-1"></a><span class="at">@tf.function</span></span>
+<span id="cb1-2"><a href="#cb1-2"></a><span class="kw">def</span> pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):</span>
+<span id="cb1-3"><a href="#cb1-3"></a>    <span class="co">&quot;&quot;&quot;Prices call option.</span></span>
+<span id="cb1-4"><a href="#cb1-4"></a></span>
+<span id="cb1-5"><a href="#cb1-5"></a><span class="co">    Parameters</span></span>
+<span id="cb1-6"><a href="#cb1-6"></a><span class="co">    ----------</span></span>
+<span id="cb1-7"><a href="#cb1-7"></a><span class="co">    S0 : float</span></span>
+<span id="cb1-8"><a href="#cb1-8"></a><span class="co">        Spot price.</span></span>
+<span id="cb1-9"><a href="#cb1-9"></a><span class="co">    strike : float</span></span>
+<span id="cb1-10"><a href="#cb1-10"></a><span class="co">        Strike price.</span></span>
+<span id="cb1-11"><a href="#cb1-11"></a><span class="co">    time_to_expiry : float</span></span>
+<span id="cb1-12"><a href="#cb1-12"></a><span class="co">        Time to maturity.</span></span>
+<span id="cb1-13"><a href="#cb1-13"></a><span class="co">    implied_vol : float</span></span>
+<span id="cb1-14"><a href="#cb1-14"></a><span class="co">        Volatility.</span></span>
+<span id="cb1-15"><a href="#cb1-15"></a><span class="co">    riskfree : float</span></span>
+<span id="cb1-16"><a href="#cb1-16"></a><span class="co">        Risk free rate.</span></span>
+<span id="cb1-17"><a href="#cb1-17"></a></span>
+<span id="cb1-18"><a href="#cb1-18"></a><span class="co">    Returns</span></span>
+<span id="cb1-19"><a href="#cb1-19"></a><span class="co">    -------</span></span>
+<span id="cb1-20"><a href="#cb1-20"></a><span class="co">    npv : float</span></span>
+<span id="cb1-21"><a href="#cb1-21"></a><span class="co">        Net present value.</span></span>
+<span id="cb1-22"><a href="#cb1-22"></a></span>
+<span id="cb1-23"><a href="#cb1-23"></a><span class="co">    Examples</span></span>
+<span id="cb1-24"><a href="#cb1-24"></a><span class="co">    --------</span></span>
+<span id="cb1-25"><a href="#cb1-25"></a><span class="co">    &gt;&gt;&gt; kw = initialize_variables(to_tf=True)</span></span>
+<span id="cb1-26"><a href="#cb1-26"></a><span class="co">    &gt;&gt;&gt; pricer_blackScholes(**kw)</span></span>
+<span id="cb1-27"><a href="#cb1-27"></a></span>
+<span id="cb1-28"><a href="#cb1-28"></a><span class="co">    Notes</span></span>
+<span id="cb1-29"><a href="#cb1-29"></a><span class="co">    -----</span></span>
+<span id="cb1-30"><a href="#cb1-30"></a><span class="co">    https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model#Black%E2%80%93Scholes_formula</span></span>
+<span id="cb1-31"><a href="#cb1-31"></a><span class="co">    &quot;&quot;&quot;</span></span>
+<span id="cb1-32"><a href="#cb1-32"></a>    S       <span class="op">=</span> S0</span>
+<span id="cb1-33"><a href="#cb1-33"></a>    K       <span class="op">=</span> strike</span>
+<span id="cb1-34"><a href="#cb1-34"></a>    dt      <span class="op">=</span> time_to_expiry</span>
+<span id="cb1-35"><a href="#cb1-35"></a>    dt_sqrt <span class="op">=</span> tf.sqrt(dt)</span>
+<span id="cb1-36"><a href="#cb1-36"></a>    sigma   <span class="op">=</span> implied_vol</span>
+<span id="cb1-37"><a href="#cb1-37"></a>    r       <span class="op">=</span> riskfree</span>
+<span id="cb1-38"><a href="#cb1-38"></a>    Phi     <span class="op">=</span> tf.compat.v1.distributions.Normal(<span class="fl">0.</span>, <span class="fl">1.</span>).cdf</span>
+<span id="cb1-39"><a href="#cb1-39"></a></span>
+<span id="cb1-40"><a href="#cb1-40"></a>    d1 <span class="op">=</span> (tf.math.log(S <span class="op">/</span> K) <span class="op">+</span> (r <span class="op">+</span> sigma <span class="op">**</span> <span class="dv">2</span> <span class="op">/</span> <span class="dv">2</span>) <span class="op">*</span> dt) <span class="op">/</span> (sigma <span class="op">*</span> dt_sqrt)</span>
+<span id="cb1-41"><a href="#cb1-41"></a>    d2 <span class="op">=</span> d1 <span class="op">-</span> sigma <span class="op">*</span> dt_sqrt</span>
+<span id="cb1-42"><a href="#cb1-42"></a></span>
+<span id="cb1-43"><a href="#cb1-43"></a>    npv <span class="op">=</span>  S <span class="op">*</span> Phi(d1) <span class="op">-</span> K <span class="op">*</span> tf.exp(<span class="op">-</span>r <span class="op">*</span> dt) <span class="op">*</span> Phi(d2)</span>
+<span id="cb1-44"><a href="#cb1-44"></a>    <span class="cf">return</span> npv</span></code></pre></div>
+<p>As we can see the above code is the implementation of a call option in terms of the Black-Scholes framework. A very cool improvement is the <a href="https://www.tensorflow.org/api_docs/python/tf/function"><code>tf.function</code></a> decorator which create a callable graph for us.</p>
+<h2 id="calculating-derivatives">Calculating Derivatives</h2>
+<p>In previous versions of TensorFlow we need to use <a href=""><code>tf.gradient</code></a> which requires create a session and plenty of annoing stuff. Now, all this process is done using <a href="https://www.tensorflow.org/api_docs/python/tf/GradientTape"><code>tf.GradientTape</code></a> which is simplier. We make get it done writting something like :</p>
+<div class="sourceCode" id="cb2"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb2-1"><a href="#cb2-1"></a><span class="cf">with</span> tf.GradientTape() <span class="im">as</span> g1:</span>
+<span id="cb2-2"><a href="#cb2-2"></a>    npv <span class="op">=</span> pricer_blackScholes(<span class="op">**</span>variables)</span>
+<span id="cb2-3"><a href="#cb2-3"></a>dv <span class="op">=</span> g1.gradient(npv, variables)  <span class="co"># first order derivatives</span></span></code></pre></div>
+<p>ok, but what if we want higher order derivatives? The answer is easy, we only have to add a new <code>tf.GradientTape</code>:</p>
+<div class="sourceCode" id="cb3"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb3-1"><a href="#cb3-1"></a><span class="cf">with</span> tf.GradientTape() <span class="im">as</span> g2:</span>
+<span id="cb3-2"><a href="#cb3-2"></a>    <span class="cf">with</span> tf.GradientTape() <span class="im">as</span> g1:</span>
+<span id="cb3-3"><a href="#cb3-3"></a>        npv <span class="op">=</span> pricer_blackScholes(<span class="op">**</span>variables)</span>
+<span id="cb3-4"><a href="#cb3-4"></a>    dv <span class="op">=</span> g1.gradient(npv, variables)</span>
+<span id="cb3-5"><a href="#cb3-5"></a>d2v <span class="op">=</span> g2.gradient(dv, variables)</span></code></pre></div>
+<h3 id="black-scholes-method">Black-Scholes method</h3>
+<p>We use the well-known <a href="https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model">Black-Scholes</a> to estimate the price of the call. Our code can be written as follows:</p>
+<div class="sourceCode" id="cb4"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb4-1"><a href="#cb4-1"></a><span class="at">@tf.function</span></span>
+<span id="cb4-2"><a href="#cb4-2"></a><span class="kw">def</span> pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):</span>
+<span id="cb4-3"><a href="#cb4-3"></a>    <span class="co">&quot;&quot;&quot;pricer_blackScholes.</span></span>
+<span id="cb4-4"><a href="#cb4-4"></a></span>
+<span id="cb4-5"><a href="#cb4-5"></a><span class="co">    Parameters</span></span>
+<span id="cb4-6"><a href="#cb4-6"></a><span class="co">    ----------</span></span>
+<span id="cb4-7"><a href="#cb4-7"></a><span class="co">    S0 : tensorflow.Variable</span></span>
+<span id="cb4-8"><a href="#cb4-8"></a><span class="co">        Underlying spot price.</span></span>
+<span id="cb4-9"><a href="#cb4-9"></a><span class="co">    strike : tensorflow.Variable</span></span>
+<span id="cb4-10"><a href="#cb4-10"></a><span class="co">        Strike price.</span></span>
+<span id="cb4-11"><a href="#cb4-11"></a><span class="co">    time_to_expiry : tensorflow.Variable</span></span>
+<span id="cb4-12"><a href="#cb4-12"></a><span class="co">        Time to expiry.</span></span>
+<span id="cb4-13"><a href="#cb4-13"></a><span class="co">    implied_vol : tensorflow.Variable</span></span>
+<span id="cb4-14"><a href="#cb4-14"></a><span class="co">        Volatility.</span></span>
+<span id="cb4-15"><a href="#cb4-15"></a><span class="co">    riskfree : tensorflow.Variable</span></span>
+<span id="cb4-16"><a href="#cb4-16"></a><span class="co">        Risk free rate.</span></span>
+<span id="cb4-17"><a href="#cb4-17"></a></span>
+<span id="cb4-18"><a href="#cb4-18"></a><span class="co">    Returns</span></span>
+<span id="cb4-19"><a href="#cb4-19"></a><span class="co">    -------</span></span>
+<span id="cb4-20"><a href="#cb4-20"></a><span class="co">    npv : tensorflow.Tensor</span></span>
+<span id="cb4-21"><a href="#cb4-21"></a><span class="co">        Net present value.</span></span>
+<span id="cb4-22"><a href="#cb4-22"></a></span>
+<span id="cb4-23"><a href="#cb4-23"></a><span class="co">    Examples</span></span>
+<span id="cb4-24"><a href="#cb4-24"></a><span class="co">    --------</span></span>
+<span id="cb4-25"><a href="#cb4-25"></a><span class="co">    &gt;&gt;&gt; kw = initialize_variables(to_tf=True)</span></span>
+<span id="cb4-26"><a href="#cb4-26"></a><span class="co">    &gt;&gt;&gt; pricer_blackScholes(**kw)</span></span>
+<span id="cb4-27"><a href="#cb4-27"></a><span class="co">    &lt;tf.Tensor: id=120, shape=(), dtype=float32, numpy=9.739834&gt;</span></span>
+<span id="cb4-28"><a href="#cb4-28"></a></span>
+<span id="cb4-29"><a href="#cb4-29"></a><span class="co">    Notes</span></span>
+<span id="cb4-30"><a href="#cb4-30"></a><span class="co">    -----</span></span>
+<span id="cb4-31"><a href="#cb4-31"></a><span class="co">    Formula: https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model#Black%E2%80%93Scholes_formula</span></span>
+<span id="cb4-32"><a href="#cb4-32"></a><span class="co">    &quot;&quot;&quot;</span></span>
+<span id="cb4-33"><a href="#cb4-33"></a>    S       <span class="op">=</span> S0</span>
+<span id="cb4-34"><a href="#cb4-34"></a>    K       <span class="op">=</span> strike</span>
+<span id="cb4-35"><a href="#cb4-35"></a>    dt      <span class="op">=</span> time_to_expiry</span>
+<span id="cb4-36"><a href="#cb4-36"></a>    dt_sqrt <span class="op">=</span> tf.sqrt(dt)</span>
+<span id="cb4-37"><a href="#cb4-37"></a>    sigma   <span class="op">=</span> implied_vol</span>
+<span id="cb4-38"><a href="#cb4-38"></a>    r       <span class="op">=</span> riskfree</span>
+<span id="cb4-39"><a href="#cb4-39"></a>    Phi     <span class="op">=</span> tf.compat.v1.distributions.Normal(<span class="fl">0.</span>, <span class="fl">1.</span>).cdf</span>
+<span id="cb4-40"><a href="#cb4-40"></a></span>
+<span id="cb4-41"><a href="#cb4-41"></a>    d1 <span class="op">=</span> (tf.math.log(S <span class="op">/</span> K) <span class="op">+</span> (r <span class="op">+</span> sigma <span class="op">**</span> <span class="dv">2</span> <span class="op">/</span> <span class="dv">2</span>) <span class="op">*</span> dt) <span class="op">/</span> (sigma <span class="op">*</span> dt_sqrt)</span>
+<span id="cb4-42"><a href="#cb4-42"></a>    d2 <span class="op">=</span> d1 <span class="op">-</span> sigma <span class="op">*</span> dt_sqrt</span>
+<span id="cb4-43"><a href="#cb4-43"></a></span>
+<span id="cb4-44"><a href="#cb4-44"></a>    npv <span class="op">=</span>  S <span class="op">*</span> Phi(d1) <span class="op">-</span> K <span class="op">*</span> tf.exp(<span class="op">-</span>r <span class="op">*</span> dt) <span class="op">*</span> Phi(d2)</span>
+<span id="cb4-45"><a href="#cb4-45"></a>    <span class="cf">return</span> npv</span></code></pre></div>
+<p>To get the net present value (NPV) and the greeks (derivatives) we can write a function that wraps all process. It’s optional of course but very useful.</p>
+<div class="sourceCode" id="cb5"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb5-1"><a href="#cb5-1"></a><span class="at">@tf.function</span></span>
+<span id="cb5-2"><a href="#cb5-2"></a><span class="kw">def</span> pricer_blackScholes(S0, strike, time_to_expiry, implied_vol, riskfree):</span>
+<span id="cb5-3"><a href="#cb5-3"></a>    <span class="co">&quot;&quot;&quot;Calculates NPV and greeks using Black-Scholes model.</span></span>
+<span id="cb5-4"><a href="#cb5-4"></a></span>
+<span id="cb5-5"><a href="#cb5-5"></a><span class="co">    Parameters</span></span>
+<span id="cb5-6"><a href="#cb5-6"></a><span class="co">    ----------</span></span>
+<span id="cb5-7"><a href="#cb5-7"></a><span class="co">    S0 : tensorflow.Variable</span></span>
+<span id="cb5-8"><a href="#cb5-8"></a><span class="co">        Underlying spot price.</span></span>
+<span id="cb5-9"><a href="#cb5-9"></a><span class="co">    strike : tensorflow.Variable</span></span>
+<span id="cb5-10"><a href="#cb5-10"></a><span class="co">        Strike price.</span></span>
+<span id="cb5-11"><a href="#cb5-11"></a><span class="co">    time_to_expiry : tensorflow.Variable</span></span>
+<span id="cb5-12"><a href="#cb5-12"></a><span class="co">        Time to expiry.</span></span>
+<span id="cb5-13"><a href="#cb5-13"></a><span class="co">    implied_vol : tensorflow.Variable</span></span>
+<span id="cb5-14"><a href="#cb5-14"></a><span class="co">        Volatility.</span></span>
+<span id="cb5-15"><a href="#cb5-15"></a><span class="co">    riskfree : tensorflow.Variable</span></span>
+<span id="cb5-16"><a href="#cb5-16"></a><span class="co">        Risk free rate.</span></span>
+<span id="cb5-17"><a href="#cb5-17"></a></span>
+<span id="cb5-18"><a href="#cb5-18"></a><span class="co">    Returns</span></span>
+<span id="cb5-19"><a href="#cb5-19"></a><span class="co">    -------</span></span>
+<span id="cb5-20"><a href="#cb5-20"></a><span class="co">    npv : tensorflow.Tensor</span></span>
+<span id="cb5-21"><a href="#cb5-21"></a><span class="co">        Net present value.</span></span>
+<span id="cb5-22"><a href="#cb5-22"></a></span>
+<span id="cb5-23"><a href="#cb5-23"></a><span class="co">    Examples</span></span>
+<span id="cb5-24"><a href="#cb5-24"></a><span class="co">    --------</span></span>
+<span id="cb5-25"><a href="#cb5-25"></a><span class="co">    &gt;&gt;&gt; kw = initialize_variables(to_tf=True)</span></span>
+<span id="cb5-26"><a href="#cb5-26"></a><span class="co">    &gt;&gt;&gt; pricer_blackScholes(**kw)</span></span>
+<span id="cb5-27"><a href="#cb5-27"></a><span class="co">    &lt;tf.Tensor: id=120, shape=(), dtype=float32, numpy=9.739834&gt;</span></span>
+<span id="cb5-28"><a href="#cb5-28"></a></span>
+<span id="cb5-29"><a href="#cb5-29"></a><span class="co">    Notes</span></span>
+<span id="cb5-30"><a href="#cb5-30"></a><span class="co">    -----</span></span>
+<span id="cb5-31"><a href="#cb5-31"></a><span class="co">    Formula: https://en.wikipedia.org/wiki/Black%E2%80%93Scholes_model#Black%E2%80%93Scholes_formula</span></span>
+<span id="cb5-32"><a href="#cb5-32"></a><span class="co">    &quot;&quot;&quot;</span></span>
+<span id="cb5-33"><a href="#cb5-33"></a>    S       <span class="op">=</span> S0</span>
+<span id="cb5-34"><a href="#cb5-34"></a>    K       <span class="op">=</span> strike</span>
+<span id="cb5-35"><a href="#cb5-35"></a>    dt      <span class="op">=</span> time_to_expiry</span>
+<span id="cb5-36"><a href="#cb5-36"></a>    dt_sqrt <span class="op">=</span> tf.sqrt(dt)</span>
+<span id="cb5-37"><a href="#cb5-37"></a>    sigma   <span class="op">=</span> implied_vol</span>
+<span id="cb5-38"><a href="#cb5-38"></a>    r       <span class="op">=</span> riskfree</span>
+<span id="cb5-39"><a href="#cb5-39"></a>    Phi     <span class="op">=</span> tf.compat.v1.distributions.Normal(<span class="fl">0.</span>, <span class="fl">1.</span>).cdf</span>
+<span id="cb5-40"><a href="#cb5-40"></a></span>
+<span id="cb5-41"><a href="#cb5-41"></a>    d1 <span class="op">=</span> (tf.math.log(S <span class="op">/</span> K) <span class="op">+</span> (r <span class="op">+</span> sigma <span class="op">**</span> <span class="dv">2</span> <span class="op">/</span> <span class="dv">2</span>) <span class="op">*</span> dt) <span class="op">/</span> (sigma <span class="op">*</span> dt_sqrt)</span>
+<span id="cb5-42"><a href="#cb5-42"></a>    d2 <span class="op">=</span> d1 <span class="op">-</span> sigma <span class="op">*</span> dt_sqrt</span>
+<span id="cb5-43"><a href="#cb5-43"></a></span>
+<span id="cb5-44"><a href="#cb5-44"></a>    npv <span class="op">=</span>  S <span class="op">*</span> Phi(d1) <span class="op">-</span> K <span class="op">*</span> tf.exp(<span class="op">-</span>r <span class="op">*</span> dt) <span class="op">*</span> Phi(d2)</span>
+<span id="cb5-45"><a href="#cb5-45"></a>    <span class="cf">return</span> npv</span></code></pre></div>
+<p>The previous function returns:</p>
+<div class="sourceCode" id="cb6"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb6-1"><a href="#cb6-1"></a><span class="op">&gt;&gt;&gt;</span> calculate_blackScholes()</span>
+<span id="cb6-2"><a href="#cb6-2"></a>{<span class="st">&#39;dv&#39;</span>: {<span class="st">&#39;S0&#39;</span>: <span class="fl">0.5066145</span>,</span>
+<span id="cb6-3"><a href="#cb6-3"></a>        <span class="st">&#39;implied_vol&#39;</span>: <span class="fl">56.411205</span>,</span>
+<span id="cb6-4"><a href="#cb6-4"></a>        <span class="st">&#39;riskfree&#39;</span>: <span class="fl">81.843216</span>,</span>
+<span id="cb6-5"><a href="#cb6-5"></a>        <span class="st">&#39;strike&#39;</span>: <span class="fl">-0.37201464</span>,</span>
+<span id="cb6-6"><a href="#cb6-6"></a>        <span class="st">&#39;time_to_expiry&#39;</span>: <span class="fl">4.048208</span>},</span>
+<span id="cb6-7"><a href="#cb6-7"></a> <span class="st">&#39;npv&#39;</span>: <span class="fl">9.739834</span>}</span></code></pre></div>
+<p>Where:</p>
+<ul>
+<li><code>npv</code> : the net present value is 9.74.</li>
+<li><code>S0</code> = <span class="math inline">$\frac{\partial v}{\partial S}$</span></li>
+<li><code>implied_vol</code> = <span class="math inline">$\frac{\partial v}{\partial \sigma}$</span></li>
+<li><code>strike</code> = <span class="math inline">$\frac{\partial v}{\partial K}$</span></li>
+<li><code>time_to_expiry</code> = <span class="math inline">$\frac{\partial v}{\partial \tau}$</span></li>
+</ul>
+<p>We have seen how to implement a TensorFlow function and how to get the derivatives from it. Now, we are going to see another example using the Monte Carlo method.</p>
+<h3 id="monte-carlo-method">Monte Carlo method</h3>
+<p>The Monte Carlo method is very useful when we don’t have the close formula or it’s very complex. We are going to implement the Monte Carlo pricing function, to this task I decided implement <code>brownian</code> function too used inside of <code>pricer_montecarlo</code>.</p>
+<div class="sourceCode" id="cb7"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb7-1"><a href="#cb7-1"></a><span class="at">@tf.function</span></span>
+<span id="cb7-2"><a href="#cb7-2"></a><span class="kw">def</span> pricer_montecarlo(S0, strike, time_to_expiry, implied_vol, riskfree, dw):</span>
+<span id="cb7-3"><a href="#cb7-3"></a>    <span class="co">&quot;&quot;&quot;Monte Carlo pricing method.</span></span>
+<span id="cb7-4"><a href="#cb7-4"></a></span>
+<span id="cb7-5"><a href="#cb7-5"></a><span class="co">    Parameters</span></span>
+<span id="cb7-6"><a href="#cb7-6"></a><span class="co">    ----------</span></span>
+<span id="cb7-7"><a href="#cb7-7"></a><span class="co">    S0 : tensorflow.Variable</span></span>
+<span id="cb7-8"><a href="#cb7-8"></a><span class="co">        Underlying spot price.</span></span>
+<span id="cb7-9"><a href="#cb7-9"></a><span class="co">    strike : tensorflow.Variable</span></span>
+<span id="cb7-10"><a href="#cb7-10"></a><span class="co">        Strike price.</span></span>
+<span id="cb7-11"><a href="#cb7-11"></a><span class="co">    time_to_expiry : tensorflow.Variable</span></span>
+<span id="cb7-12"><a href="#cb7-12"></a><span class="co">        Time to expiry.</span></span>
+<span id="cb7-13"><a href="#cb7-13"></a><span class="co">    implied_vol : tensorflow.Variable</span></span>
+<span id="cb7-14"><a href="#cb7-14"></a><span class="co">        Volatility.</span></span>
+<span id="cb7-15"><a href="#cb7-15"></a><span class="co">    riskfree : tensorflow.Variable</span></span>
+<span id="cb7-16"><a href="#cb7-16"></a><span class="co">        Risk free rate.</span></span>
+<span id="cb7-17"><a href="#cb7-17"></a><span class="co">    dw : tensorflow.Variable</span></span>
+<span id="cb7-18"><a href="#cb7-18"></a><span class="co">        Normal random variable.</span></span>
+<span id="cb7-19"><a href="#cb7-19"></a></span>
+<span id="cb7-20"><a href="#cb7-20"></a><span class="co">    Returns</span></span>
+<span id="cb7-21"><a href="#cb7-21"></a><span class="co">    -------</span></span>
+<span id="cb7-22"><a href="#cb7-22"></a><span class="co">    npv : tensorflow.Variable</span></span>
+<span id="cb7-23"><a href="#cb7-23"></a><span class="co">        Net present value.</span></span>
+<span id="cb7-24"><a href="#cb7-24"></a></span>
+<span id="cb7-25"><a href="#cb7-25"></a><span class="co">    Examples</span></span>
+<span id="cb7-26"><a href="#cb7-26"></a><span class="co">    --------</span></span>
+<span id="cb7-27"><a href="#cb7-27"></a><span class="co">    &gt;&gt;&gt; nsims = 10</span></span>
+<span id="cb7-28"><a href="#cb7-28"></a><span class="co">    &gt;&gt;&gt; nobs = 100</span></span>
+<span id="cb7-29"><a href="#cb7-29"></a><span class="co">    &gt;&gt;&gt; dw = tf.random.normal((nsims, nobs), seed=3232)</span></span>
+<span id="cb7-30"><a href="#cb7-30"></a><span class="co">    &gt;&gt;&gt; v = initialize_variables(to_tf=True)</span></span>
+<span id="cb7-31"><a href="#cb7-31"></a><span class="co">    &gt;&gt;&gt; npv = pricer_montecarlo(**v, dw=dw)</span></span>
+<span id="cb7-32"><a href="#cb7-32"></a><span class="co">    &gt;&gt;&gt; npv</span></span>
+<span id="cb7-33"><a href="#cb7-33"></a><span class="co">    &lt;tf.Tensor: id=646, shape=(), dtype=float32, numpy=28.780073&gt;</span></span>
+<span id="cb7-34"><a href="#cb7-34"></a><span class="co">    &quot;&quot;&quot;</span></span>
+<span id="cb7-35"><a href="#cb7-35"></a>    sigma <span class="op">=</span> implied_vol</span>
+<span id="cb7-36"><a href="#cb7-36"></a>    T <span class="op">=</span> time_to_expiry</span>
+<span id="cb7-37"><a href="#cb7-37"></a>    r <span class="op">=</span> riskfree</span>
+<span id="cb7-38"><a href="#cb7-38"></a>    K <span class="op">=</span> strike</span>
+<span id="cb7-39"><a href="#cb7-39"></a>    dt <span class="op">=</span> T <span class="op">/</span> dw.shape[<span class="dv">1</span>]</span>
+<span id="cb7-40"><a href="#cb7-40"></a></span>
+<span id="cb7-41"><a href="#cb7-41"></a>    st <span class="op">=</span> brownian(S0, dt, sigma, r, dw)</span>
+<span id="cb7-42"><a href="#cb7-42"></a>    payout <span class="op">=</span> tf.math.maximum(st[:, <span class="dv">-1</span>] <span class="op">-</span> K, <span class="dv">0</span>)</span>
+<span id="cb7-43"><a href="#cb7-43"></a>    npv <span class="op">=</span> tf.exp(<span class="op">-</span>r <span class="op">*</span> T) <span class="op">*</span> tf.reduce_mean(payout)</span>
+<span id="cb7-44"><a href="#cb7-44"></a></span>
+<span id="cb7-45"><a href="#cb7-45"></a>    <span class="cf">return</span> npv</span>
+<span id="cb7-46"><a href="#cb7-46"></a></span>
+<span id="cb7-47"><a href="#cb7-47"></a></span>
+<span id="cb7-48"><a href="#cb7-48"></a><span class="at">@tf.function</span></span>
+<span id="cb7-49"><a href="#cb7-49"></a><span class="kw">def</span> brownian(S0, dt, sigma, mu, dw):</span>
+<span id="cb7-50"><a href="#cb7-50"></a>    <span class="co">&quot;&quot;&quot;Generates a brownian motion.</span></span>
+<span id="cb7-51"><a href="#cb7-51"></a></span>
+<span id="cb7-52"><a href="#cb7-52"></a><span class="co">    Parameters</span></span>
+<span id="cb7-53"><a href="#cb7-53"></a><span class="co">    ----------</span></span>
+<span id="cb7-54"><a href="#cb7-54"></a><span class="co">    S0 : tensorflow.Variable</span></span>
+<span id="cb7-55"><a href="#cb7-55"></a><span class="co">        Initial value of Spot.</span></span>
+<span id="cb7-56"><a href="#cb7-56"></a><span class="co">    dt : tensorflow.Variable</span></span>
+<span id="cb7-57"><a href="#cb7-57"></a><span class="co">        Time step.</span></span>
+<span id="cb7-58"><a href="#cb7-58"></a><span class="co">    sigma : tensorflow.Variable</span></span>
+<span id="cb7-59"><a href="#cb7-59"></a><span class="co">        Volatility.</span></span>
+<span id="cb7-60"><a href="#cb7-60"></a><span class="co">    mu : tensorflow.Variable</span></span>
+<span id="cb7-61"><a href="#cb7-61"></a><span class="co">        Mean, in black Scholes frame it&#39;s the risk free rate.</span></span>
+<span id="cb7-62"><a href="#cb7-62"></a><span class="co">    dw : tensorflow.Variable</span></span>
+<span id="cb7-63"><a href="#cb7-63"></a><span class="co">        Random variable.</span></span>
+<span id="cb7-64"><a href="#cb7-64"></a></span>
+<span id="cb7-65"><a href="#cb7-65"></a><span class="co">    Returns</span></span>
+<span id="cb7-66"><a href="#cb7-66"></a><span class="co">    -------</span></span>
+<span id="cb7-67"><a href="#cb7-67"></a><span class="co">    out : numpy.array</span></span>
+<span id="cb7-68"><a href="#cb7-68"></a></span>
+<span id="cb7-69"><a href="#cb7-69"></a><span class="co">    Examples</span></span>
+<span id="cb7-70"><a href="#cb7-70"></a><span class="co">    --------</span></span>
+<span id="cb7-71"><a href="#cb7-71"></a><span class="co">    &gt;&gt;&gt; nsims = 10</span></span>
+<span id="cb7-72"><a href="#cb7-72"></a><span class="co">    &gt;&gt;&gt; nobs = 400</span></span>
+<span id="cb7-73"><a href="#cb7-73"></a><span class="co">    &gt;&gt;&gt; v = initialize_variables(to_tf=True)</span></span>
+<span id="cb7-74"><a href="#cb7-74"></a><span class="co">    &gt;&gt;&gt; S0 = v[&quot;S0&quot;]</span></span>
+<span id="cb7-75"><a href="#cb7-75"></a><span class="co">    &gt;&gt;&gt; dw = tf.random.normal((nsims, nobs), seed=SEED)</span></span>
+<span id="cb7-76"><a href="#cb7-76"></a><span class="co">    &gt;&gt;&gt; dt = v[&quot;time_to_expiry&quot;] / dw.shape[1]</span></span>
+<span id="cb7-77"><a href="#cb7-77"></a><span class="co">    &gt;&gt;&gt; sigma = v[&quot;implied_vol&quot;]</span></span>
+<span id="cb7-78"><a href="#cb7-78"></a><span class="co">    &gt;&gt;&gt; r = v[&quot;riskfree&quot;]</span></span>
+<span id="cb7-79"><a href="#cb7-79"></a><span class="co">    &gt;&gt;&gt; paths = np.transpose(brownian(S0, dt, sigma, r, dw))</span></span>
+<span id="cb7-80"><a href="#cb7-80"></a><span class="co">    &quot;&quot;&quot;</span></span>
+<span id="cb7-81"><a href="#cb7-81"></a>    dt_sqrt <span class="op">=</span> tf.math.sqrt(dt)</span>
+<span id="cb7-82"><a href="#cb7-82"></a>    shock <span class="op">=</span> sigma <span class="op">*</span> dt_sqrt <span class="op">*</span> dw</span>
+<span id="cb7-83"><a href="#cb7-83"></a>    drift <span class="op">=</span> (mu <span class="op">-</span> (sigma <span class="op">**</span> <span class="dv">2</span>) <span class="op">/</span> <span class="dv">2</span>)</span>
+<span id="cb7-84"><a href="#cb7-84"></a>    bm <span class="op">=</span> tf.math.exp(drift <span class="op">*</span> dt <span class="op">+</span> shock)</span>
+<span id="cb7-85"><a href="#cb7-85"></a>    out <span class="op">=</span> S0 <span class="op">*</span> tf.math.cumprod(bm, axis<span class="op">=</span><span class="dv">1</span>)</span>
+<span id="cb7-86"><a href="#cb7-86"></a>    <span class="cf">return</span> out</span></code></pre></div>
+<p>Now, we are ready to calculate the NPV and the greeks under this frame.</p>
+<div class="sourceCode" id="cb8"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb8-1"><a href="#cb8-1"></a><span class="kw">def</span> calculate_montecarlo(greeks<span class="op">=</span><span class="va">True</span>):</span>
+<span id="cb8-2"><a href="#cb8-2"></a>    <span class="co">&quot;&quot;&quot;calculate_montecarlo.</span></span>
+<span id="cb8-3"><a href="#cb8-3"></a></span>
+<span id="cb8-4"><a href="#cb8-4"></a><span class="co">    Returns</span></span>
+<span id="cb8-5"><a href="#cb8-5"></a><span class="co">    -------</span></span>
+<span id="cb8-6"><a href="#cb8-6"></a><span class="co">    out : dict</span></span>
+<span id="cb8-7"><a href="#cb8-7"></a><span class="co">        npv : Net present value</span></span>
+<span id="cb8-8"><a href="#cb8-8"></a><span class="co">        dv : First order derivatives</span></span>
+<span id="cb8-9"><a href="#cb8-9"></a><span class="co">        d2v : Second order derivatives</span></span>
+<span id="cb8-10"><a href="#cb8-10"></a></span>
+<span id="cb8-11"><a href="#cb8-11"></a><span class="co">    Examples</span></span>
+<span id="cb8-12"><a href="#cb8-12"></a><span class="co">    --------</span></span>
+<span id="cb8-13"><a href="#cb8-13"></a><span class="co">    &gt;&gt;&gt; out = calculate_montecarlo()</span></span>
+<span id="cb8-14"><a href="#cb8-14"></a><span class="co">    &gt;&gt;&gt; pprint(out)</span></span>
+<span id="cb8-15"><a href="#cb8-15"></a><span class="co">    {&#39;dv&#39;: {&#39;S0&#39;: 0.5065364,</span></span>
+<span id="cb8-16"><a href="#cb8-16"></a><span class="co">            &#39;implied_vol&#39;: 56.45906,</span></span>
+<span id="cb8-17"><a href="#cb8-17"></a><span class="co">            &#39;riskfree&#39;: 81.81441,</span></span>
+<span id="cb8-18"><a href="#cb8-18"></a><span class="co">            &#39;strike&#39;: -0.37188327,</span></span>
+<span id="cb8-19"><a href="#cb8-19"></a><span class="co">            &#39;time_to_expiry&#39;: 4.050169},</span></span>
+<span id="cb8-20"><a href="#cb8-20"></a><span class="co">     &#39;npv&#39;: 9.746445}</span></span>
+<span id="cb8-21"><a href="#cb8-21"></a><span class="co">    &quot;&quot;&quot;</span></span>
+<span id="cb8-22"><a href="#cb8-22"></a>    nsims <span class="op">=</span> <span class="dv">10000000</span></span>
+<span id="cb8-23"><a href="#cb8-23"></a>    nobs <span class="op">=</span> <span class="dv">2</span></span>
+<span id="cb8-24"><a href="#cb8-24"></a>    dw <span class="op">=</span> tf.random.normal((nsims, nobs), seed<span class="op">=</span>SEED)</span>
+<span id="cb8-25"><a href="#cb8-25"></a>    v <span class="op">=</span> initialize_variables(to_tf<span class="op">=</span><span class="va">True</span>)</span>
+<span id="cb8-26"><a href="#cb8-26"></a></span>
+<span id="cb8-27"><a href="#cb8-27"></a>    out <span class="op">=</span> <span class="bu">dict</span>()</span>
+<span id="cb8-28"><a href="#cb8-28"></a></span>
+<span id="cb8-29"><a href="#cb8-29"></a>    <span class="cf">with</span> tf.GradientTape() <span class="im">as</span> g1:</span>
+<span id="cb8-30"><a href="#cb8-30"></a>        npv <span class="op">=</span> pricer_montecarlo(<span class="op">**</span>v, dw<span class="op">=</span>dw).numpy()</span>
+<span id="cb8-31"><a href="#cb8-31"></a>    dv <span class="op">=</span> g1.gradient(npv, v)</span>
+<span id="cb8-32"><a href="#cb8-32"></a></span>
+<span id="cb8-33"><a href="#cb8-33"></a>    out[<span class="st">&quot;dv&quot;</span>] <span class="op">=</span> {k: v.numpy() <span class="cf">for</span> k, v <span class="kw">in</span> dv.items()}</span>
+<span id="cb8-34"><a href="#cb8-34"></a>    <span class="cf">return</span> out</span></code></pre></div>
+<p>The output:</p>
+<div class="sourceCode" id="cb9"><pre class="sourceCode python"><code class="sourceCode python"><span id="cb9-1"><a href="#cb9-1"></a><span class="op">&gt;&gt;&gt;</span> out <span class="op">=</span> calculate_montecarlo()</span>
+<span id="cb9-2"><a href="#cb9-2"></a><span class="op">&gt;&gt;&gt;</span> pprint(out)</span>
+<span id="cb9-3"><a href="#cb9-3"></a>{<span class="st">&#39;dv&#39;</span>: {<span class="st">&#39;S0&#39;</span>: <span class="fl">0.5065364</span>,</span>
+<span id="cb9-4"><a href="#cb9-4"></a>        <span class="st">&#39;implied_vol&#39;</span>: <span class="fl">56.45906</span>,</span>
+<span id="cb9-5"><a href="#cb9-5"></a>        <span class="st">&#39;riskfree&#39;</span>: <span class="fl">81.81441</span>,</span>
+<span id="cb9-6"><a href="#cb9-6"></a>        <span class="st">&#39;strike&#39;</span>: <span class="fl">-0.37188327</span>,</span>
+<span id="cb9-7"><a href="#cb9-7"></a>        <span class="st">&#39;time_to_expiry&#39;</span>: <span class="fl">4.050169</span>},</span>
+<span id="cb9-8"><a href="#cb9-8"></a> <span class="st">&#39;npv&#39;</span>: <span class="fl">9.746445</span>}</span></code></pre></div>
+<h3 id="comparison">Comparison</h3>
+<p>We are taking a look at the results of both methods:</p>
+<table>
+<thead>
+<tr class="header">
+<th style="text-align: center;">Variable</th>
+<th style="text-align: center;">Black-Scholes</th>
+<th style="text-align: center;">Montecarlo</th>
+</tr>
+</thead>
+<tbody>
+<tr class="odd">
+<td style="text-align: center;">npv</td>
+<td style="text-align: center;">9.746445</td>
+<td style="text-align: center;">9.739834</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><span class="math inline">$\frac{\partial v}{\partial S}$</span></td>
+<td style="text-align: center;">0.5065364</td>
+<td style="text-align: center;">0.5066145</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><span class="math inline">$\frac{\partial v}{\partial \sigma}$</span></td>
+<td style="text-align: center;">56.45906</td>
+<td style="text-align: center;">56.411205</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><span class="math inline">$\frac{\partial v}{\partial r}$</span></td>
+<td style="text-align: center;">81.81441</td>
+<td style="text-align: center;">81.843216</td>
+</tr>
+<tr class="odd">
+<td style="text-align: center;"><span class="math inline">$\frac{\partial v}{\partial K}$</span></td>
+<td style="text-align: center;">-0.37188327</td>
+<td style="text-align: center;">-0.37201464</td>
+</tr>
+<tr class="even">
+<td style="text-align: center;"><span class="math inline">$\frac{\partial v}{\partial \tau}$</span></td>
+<td style="text-align: center;">4.050169</td>
+<td style="text-align: center;">4.048208</td>
+</tr>
+</tbody>
+</table>
+<p>As we can see, we can get similar results with both methods. There is room for improvements, for example: We can increase the number of simulations into Monte Carlo method. However, the results are reasonably close between them and very easy to implement, which is more important.</p>
+<p>Have you used this before? would be great if you can tell your use case in the comments.</p>
+<p>Keep coding!</p>
